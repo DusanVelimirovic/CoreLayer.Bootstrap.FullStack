@@ -1,0 +1,66 @@
+﻿@using WebApp.Services.Identity.Auth
+@using WebApp.Components.Shared
+
+@inject NavigationManager NavManager
+@inject CustomAuthStateProvider AuthStateProvider
+
+@if (shouldRenderContent)
+{
+    @ChildContent
+}
+else
+{
+    <p>Preusmeravanje...</p>
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Reverse { get; set; } = false;
+    [Parameter] public int? RequiredModuleId { get; set; }
+
+    private bool shouldRenderContent = false;
+    private bool initialized = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || initialized)
+            return;
+
+        initialized = true;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var isAuthenticated = authState.User.Identity?.IsAuthenticated ?? false;
+        var session = AuthStateProvider.CurrentSession;
+
+        // Console.WriteLine($"Require module ID: {RequiredModuleId} (HasValue: {RequiredModuleId.HasValue})");
+        // Console.WriteLine($"Authenticated: {isAuthenticated}, Session Null: {session == null}");
+
+        // Not authenticated
+        if (!isAuthenticated && !Reverse)
+        {
+            NavManager.NavigateTo("/login", true);
+            return;
+        }
+
+        // Module-based access check
+        if (RequiredModuleId.HasValue)
+        {
+            if (session == null || !session.AccessibleModuleIds.Contains(RequiredModuleId.Value))
+            {
+                NavManager.NavigateTo("/access-denied", true);
+                return;
+            }
+        }
+
+        // Authenticated but visiting login page
+        if (isAuthenticated && Reverse)
+        {
+            NavManager.NavigateTo("/", true);
+            return;
+        }
+
+        // Everything OK → render content
+        shouldRenderContent = true;
+        StateHasChanged();
+    }
+}

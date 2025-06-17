@@ -1,0 +1,93 @@
+﻿@* Displays the user profile dropdown in the top navigation bar.
+       Handles login/logout visibility, logout flow, and displays the current user's name.
+
+   Preconditions:
+   - User must be authenticated to access the dropdown.
+   - AuthService and CustomAuthStateProvider must be correctly injected.
+   - AuthenticationStateProvider must support state change events.
+
+   Postconditions:
+   - Displays logout UI for authorized users, login link otherwise.
+   - On logout: clears session, shows toast, and redirects to login page.
+*@
+
+@using Microsoft.AspNetCore.Components.Authorization
+@using WebApp.Services.Identity
+
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Navigation
+@inject AuthService AuthService
+@inject IToastService ToastService
+@inject CustomAuthStateProvider AuthStateProvider
+@inject IJSRuntime JSRuntime
+
+@implements IDisposable
+
+<!-- Render mode for server-side interactivity -->
+@rendermode @(new InteractiveServerRenderMode(false))
+
+<AuthorizeView>
+    <Authorized>
+        <!-- Authenticated user dropdown -->
+        <div class="dropdown user-dropdown">
+            <button class="btn text-dark btn-link btn-user-profile dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-person-circle me-2"></i> @userName
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="/forgot-password">🔒 Promeni lozinku</a></li>
+                <li><button class="dropdown-item" @onclick="Logout">🚪 Odjava</button></li>
+            </ul>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <a class="btn text-dark" href="/login">
+            <i class="bi bi-box-arrow-in-right me-1"></i> Logovanje
+        </a>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private string? userName = "Korisnik";
+
+    // first load, attach auth state listener and set current username
+    protected override async Task OnInitializedAsync()
+    {
+        AuthProvider.AuthenticationStateChanged += OnAuthStateChanged;
+
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        userName = authState.User.Identity?.Name ?? "Korisnik";
+    }
+
+    // Triggered when auth state changes (e.g., after login/logout)
+    private async void OnAuthStateChanged(Task<AuthenticationState> task)
+    {
+        var authState = await task;
+        userName = authState.User.Identity?.Name ?? "Korisnik";
+        StateHasChanged(); // Re-render component
+    }
+
+    // Logout logic: show toast, call logout, clear session, redirect
+    private async Task Logout()
+    {
+        ToastService.ShowInfo("Odjava u toku...");
+
+        var result = await AuthService.LogoutAsync();
+        if (result)
+        {
+            await AuthStateProvider.MarkUserAsLoggedOut();
+            ToastService.ShowSuccess("Uspešno ste se odjavili.");
+            await Task.Delay(1500);
+            Navigation.NavigateTo("/login", forceLoad: true);
+        }
+        else
+        {
+            ToastService.ShowError("Odjava nije uspela.");
+        }
+    }
+
+    // Unsubscribe from auth state events when component is disposed
+    public void Dispose()
+    {
+        AuthProvider.AuthenticationStateChanged -= OnAuthStateChanged;
+    }
+}

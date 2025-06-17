@@ -1,0 +1,189 @@
+﻿@*
+Admin component for listing, editing, and managing users.
+
+Preconditions:
+- AdminUserService and RoleService must be registered and operational.
+- User and role data is expected to be available via backend API endpoints.
+- The UserListDto and UpdateUserDto must be aligned between frontend and backend.
+
+Postconditions:
+- Renders a dynamic user table with role, 2FA, and status indicators.
+- Supports inline user editing through a modal dialog.
+- Allows admins to update user's basic information and status flags.
+*@
+
+@using Blazored.Toast.Services
+@using WebApp.DTOs.Identity
+@using WebApp.Services.Identity.Admin
+@inject AdminUserService AdminUserService
+@inject RoleService RoleService
+@inject IToastService ToastService
+
+<!-- User List Table -->
+@if (users is null)
+{
+    <p><em>Učitavanje korisnika...</em></p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-bordered table-striped table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Korisničko ime</th>
+                    <th>Email</th>
+                    <th>Uloga</th>
+                    <th>2FA</th>
+                    <th>Status</th>
+                    <th>Operacije</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in users)
+                {
+                    <tr>
+                        <td>@user.UserName</td>
+                        <td>@user.Email</td>
+                        <td>@string.Join(", ", user.Roles ?? new List<string>())</td>
+                        <td>
+                            <span class="badge bg-@(user.TwoFactorEnabled ? "success" : "secondary")">
+                                @(user.TwoFactorEnabled ? "Uključeno" : "Isključeno")
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-@(user.IsActive ? "success" : "secondary")">
+                                @(user.IsActive ? "Aktivan" : "Neaktivan")
+                            </span>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => StartEdit(user)">Uredi</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+
+<!-- Edit Modal (New version) -->
+@if (editUser != null)
+{
+    <!-- Modal Edit User -->
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">✏️ Uredi korisnika</h5>
+                    <button type="button" class="btn-close" @onclick="CancelEdit"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="editUser" OnValidSubmit="UpdateUserAsync">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Email</label>
+                                <InputText class="form-control" @bind-Value="editUser.Email" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Korisničko ime</label>
+                                <InputText class="form-control" @bind-Value="editUser.UserName" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Uloga</label>
+                                <InputSelect class="form-select" @bind-Value="editUser.RoleId">
+                                    <option value="">-- Selektuj ulogu --</option>
+                                    @foreach (var role in roles)
+                                    {
+                                        <option value="@role.Id">@role.Name</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-3 d-flex align-items-center">
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="editUser.IsActive" />
+                                    <label class="form-check-label ms-2">Aktivan</label>
+                                </div>
+                            </div>
+                            <div class="col-md-3 d-flex align-items-center">
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="editUser.TwoFactorEnabled" />
+                                    <label class="form-check-label ms-2">2FA</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 d-flex justify-content-end gap-2">
+                            <button class="btn btn-primary" type="submit">💾 Sačuvaj</button>
+                            <button class="btn btn-secondary" type="button" @onclick="CancelEdit">Otkaži</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@code {
+    // User list and editing state
+    private List<UserListDto>? users;
+    private List<RoleDto> roles = new();
+
+    private UpdateUserDto? editUser = null;
+
+    // Load users and roles
+    protected override async Task OnInitializedAsync()
+    {
+        roles = await RoleService.GetRolesAsync();
+        var result = await AdminUserService.GetUsersAsync(1, 100);
+        users = result?.Items ?? new List<UserListDto>();
+    }
+
+    // Start editing selected user
+    private void StartEdit(UserListDto user)
+    {
+        editUser = new UpdateUserDto
+        {
+            UserId = user.Id,
+            Email = user.Email,
+            UserName = user.UserName,
+            IsActive = user.IsActive,
+            TwoFactorEnabled = user.TwoFactorEnabled,
+            RoleId = user.RoleId
+        };
+    }
+
+    // Cancel user edit
+    private void CancelEdit()
+    {
+        editUser = null;
+    }
+
+    // Submit user update to backend
+    private async Task UpdateUserAsync()
+    {
+        if (editUser is null) return;
+
+        var success = await AdminUserService.UpdateUserAsync(editUser);
+        if (success)
+        {
+            ToastService.ShowSuccess("Korisnik uspešno ažuriran.");
+            await RefreshUsers();
+            editUser = null;
+        }
+        else
+        {
+            ToastService.ShowError("Neuspeo pokušaj ažuriranja korisnika.");
+        }
+    }
+
+    // Refresh user list after update
+    private async Task RefreshUsers()
+    {
+        var result = await AdminUserService.GetUsersAsync(1, 100);
+        users = result?.Items ?? new List<UserListDto>();
+    }
+}

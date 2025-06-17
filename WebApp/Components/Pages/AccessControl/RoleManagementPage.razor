@@ -1,0 +1,290 @@
+﻿@* 
+Admin page for managing roles, modules, and access control matrix.
+
+Preconditions:
+- User must have access to module ID 3 (enforced via <RouteGuard RequiredModuleId="3">).
+- RoleService, ModuleService, and AccessControlService must be injected and operational.
+- All DTOs must be serializable/deserializable by the backend API.
+
+Postconditions:
+- Allows admin to create/edit roles and modules.
+- Allows toggling role access to modules via access matrix checkboxes.
+- Integrates CreateUserForm and UserTable for full user-role-module management.
+*@
+
+@page "/admin/roles"
+
+@using WebApp.Services.Identity.Admin;
+@using WebApp.DTOs.Identity;
+@using Blazored.Toast.Services
+@using WebApp.Components.Pages.Auth;
+
+@inject RoleService RoleService
+@inject ModuleService ModuleService
+@inject AccessControlService AccessControlService
+@inject IJSRuntime JSRuntime
+@inject IToastService toastService
+
+@rendermode @(new InteractiveServerRenderMode(false))
+
+<!-- Page access protected by module-based route guard -->
+<RouteGuard RequiredModuleId="3">
+    <div class="container mt-3">
+        <h2 class="mb-4">🔐 Admin panel</h2>
+
+         <!-- Create Role -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <label class="form-label">Naziv nove uloge</label>
+                <input type="text" @bind="newRoleName" class="form-control" placeholder="Unesi naziv uloge..." />
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-primary w-100" @onclick="AddRole">➕ Dodaj ulogu</button>
+            </div>
+        </div>
+
+        <!-- List existing roles -->
+        @if (roles is null)
+        {
+            <p><em>Učitavanje...</em></p>
+        }
+        else
+        {
+            <table class="table table-striped table-hover table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>Naziv</th>
+                        <th style="width: 160px;">Akcije</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var role in roles)
+                    {
+                        <tr>
+                            <td>
+                                @if (editingRoleId == role.Id)
+                                {
+                                    <input class="form-control" @bind="editedRoleName" />
+                                }
+                                else
+                                {
+                                    @role.Name
+                                }
+                            </td>
+                            <td>
+                                @if (editingRoleId == role.Id)
+                                {
+                                    <button class="btn btn-success btn-sm me-2" @onclick="() => SaveEdit(role.Id)">💾 Sačuvaj</button>
+                                    <button class="btn btn-outline-secondary btn-sm" @onclick="CancelEdit">Otkaži</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-warning btn-sm" @onclick="() => StartEdit(role.Id, role.Name)">✏️ Uredi</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <!-- Create new module -->
+        <hr class="my-5" />
+        <h3 class="mb-3">📦 Moduli</h3>
+
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <label class="form-label">Naziv novog modula</label>
+                <input class="form-control" placeholder="Unesi naziv modula..." @bind="newModuleName" />
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-success w-100" @onclick="AddModule">➕ Dodaj modul</button>
+            </div>
+        </div>
+
+        <!-- List all modules -->
+        <table class="table table-striped table-hover table-bordered">
+            <thead class="table-light">
+                <tr>
+                    <th>Naziv modula</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var module in modules)
+                {
+                    <tr>
+                        <td>
+                            @if (editingModuleId == module.ModuleId)
+                            {
+                                <input class="form-control" @bind="editedModuleName" />
+                            }
+                            else
+                            {
+                                @module.ModuleName
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <!-- Access control matrix -->
+        <hr class="my-5" />
+        <h3 class="mb-3">🧩 Podešavanje pristupa</h3>
+
+        @if (roles != null && modules != null)
+        {
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Uloga \ Modul</th>
+                            @foreach (var module in modules)
+                            {
+                                <th class="text-center">@module.ModuleName</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var role in roles)
+                        {
+                            <tr>
+                                <td>@role.Name</td>
+                                @foreach (var module in modules)
+                                {
+                                    var ac = accessControls.FirstOrDefault(a => a.RoleId == role.Id && a.ModuleId == module.ModuleId)
+                                    ?? new AccessControlDto { RoleId = role.Id, ModuleId = module.ModuleId, CanAccess = false };
+
+                                    <td class="text-center">
+                                        <input type="checkbox"
+                                               checked="@ac.CanAccess"
+                                               @onchange="(e) => OnCheckboxChanged(e, ac)" />
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Create user form -->
+            <hr class="my-5" />
+            <h3 class="mb-3">👤 Kreiranje korisnika</h3>
+            <CreateUserForm />
+
+            <!-- Manage users table -->
+            <hr class="my-5" />
+            <h3 class="mb-3">🧑‍💻 Podešavanja korisnika</h3>
+            <UserTable />
+        }
+    </div>
+</RouteGuard>
+
+@code {
+    // Roles
+    private List<RoleDto>? roles;
+    private string newRoleName = string.Empty;
+    private string editingRoleId = string.Empty;
+    private string editedRoleName = string.Empty;
+
+    // Modules
+    private List<ModuleDto> modules = new();
+    private string newModuleName = string.Empty;
+    private int editingModuleId = 0;
+    private string editedModuleName = string.Empty;
+
+    // Access control
+    private List<AccessControlDto> accessControls = new();
+
+    // On component init, load all data for page setup
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRoles();
+        await LoadModules();
+        await LoadAccessControls();
+    }
+
+    // Load role list
+    private async Task LoadRoles()
+    {
+        roles = await RoleService.GetRolesAsync();
+    }
+
+    // Add new role
+    private async Task AddRole()
+    {
+        if (string.IsNullOrWhiteSpace(newRoleName)) return;
+
+        var success = await RoleService.CreateRoleAsync(new CreateRoleDto { Name = newRoleName });
+        if (success)
+        {
+            newRoleName = string.Empty;
+            await LoadRoles();
+        }
+    }
+
+    // Begin editing role name
+    private void StartEdit(string roleId, string currentName)
+    {
+        editingRoleId = roleId;
+        editedRoleName = currentName;
+    } 
+
+    // Cancel role name edit
+    private void CancelEdit()
+    {
+        editingRoleId = string.Empty;
+        editedRoleName = string.Empty;
+    }
+
+    // Save updated role name
+    private async Task SaveEdit(string roleId)
+    {
+        var success = await RoleService.UpdateRoleAsync(roleId, new UpdateRoleDto { Name = editedRoleName });
+        if (success)
+        {
+            editingRoleId = string.Empty;
+            await LoadRoles();
+        }
+    }
+
+    // Load modules
+    private async Task LoadModules()
+    {
+        modules = await ModuleService.GetModulesAsync();
+    }
+
+    // Add new module
+    private async Task AddModule()
+    {
+        if (string.IsNullOrWhiteSpace(newModuleName)) return;
+
+        var dto = new CreateModuleDto { ModuleName = newModuleName };
+        var success = await ModuleService.CreateModuleAsync(dto);
+
+        if (success)
+        {
+            newModuleName = string.Empty;
+            await LoadModules();
+        }
+    }
+
+    // Load current role-module access control
+    private async Task LoadAccessControls()
+    {
+        accessControls = await AccessControlService.GetAccessControlsAsync();
+    }
+
+    // Toggle checkbox to grant/revoke access for role to module
+    private async Task OnCheckboxChanged(ChangeEventArgs e, AccessControlDto dto)
+    {
+        dto.CanAccess = (bool)e.Value!;
+        var success = await AccessControlService.UpdateAccessControlAsync(dto);
+
+        if (success)
+            toastService.ShowSuccess("Pristup ažuriran uspešno.");
+        else
+            toastService.ShowError("Neuspeo pokušaj ažuriranja pristupa.");
+    }
+
+}

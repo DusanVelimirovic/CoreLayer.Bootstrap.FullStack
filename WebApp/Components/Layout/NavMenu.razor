@@ -1,30 +1,67 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">WebApp</a>
-    </div>
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthProvider
+
+@inject ModuleAccessHelper AccessHelper
+
+<div class="sidebar-header px-4 py-3">
+    <h4 class="app-title mb-0">Trlić </h4>
 </div>
 
 <input type="checkbox" title="Navigation menu" class="navbar-toggler" />
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
-            </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
-            </NavLink>
-        </div>
+        @if (isSessionReady)
+        {
+            @if (AccessHelper.HasAccess(2))
+            {
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link bi bi-house-gear-fill" href="/">
+                        <span aria-hidden="true"></span> Početna
+                    </NavLink>
+                </div>
+            }
+            @if (AccessHelper.HasAccess(3))
+            {
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link bi bi-shield-lock-fill" href="/admin/roles">
+                        <span aria-hidden="true"></span> Admin panel
+                    </NavLink>
+                </div>
+            }
+        }
     </nav>
 </div>
+
+@code {
+    private bool isSessionReady = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthProvider.AuthenticationStateChanged += OnAuthStateChanged;
+
+        // Manually trigger check (optional)
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated == true)
+        {
+            isSessionReady = true;
+            var refreshed = await AccessHelper.RefreshModuleAccessAsync();
+            StateHasChanged();
+        }
+    }
+
+    private void OnAuthStateChanged(Task<AuthenticationState> task)
+    {
+        // When session is updated (e.g., after login)
+        isSessionReady = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        AuthProvider.AuthenticationStateChanged -= OnAuthStateChanged;
+    }
+}
+
 

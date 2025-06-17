@@ -1,18 +1,35 @@
 ﻿@inherits LayoutComponentBase
 
+@using Blazored.Toast.Configuration
+@using WebApp.Components
+@using WebApp.Components.Identity
+
+@inject IJSRuntime JSRuntime
+@inject ProtectedSessionStorage SessionStorage
+
+<CookieRestoreRunner />
+
+<BlazoredToasts Position="ToastPosition.BottomRight"
+                Timeout="5000"
+                IconType="IconType.Material"
+                ErrorIcon="Greška"
+                InfoIcon="Informacija"
+                SuccessIcon="Uspešno"
+                WarningIcon="Upozorenje"
+                ShowProgressBar="@true"
+                ShowCloseButton="@true"
+                MaxToastCount="3">
+</BlazoredToasts>
+
 <div class="page">
     <div class="sidebar">
         <NavMenu />
     </div>
 
     <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+        <div class="top-row px-4 d-flex justify-content-end align-items-center" style="height: 3.5rem;">
+            <UserProfile />
         </div>
-
-        <NavLink class="nav-link" href="/login">
-            Login
-        </NavLink>
 
         <article class="content px-4">
             @Body

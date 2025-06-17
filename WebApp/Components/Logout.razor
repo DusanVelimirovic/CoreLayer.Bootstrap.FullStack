@@ -1,0 +1,86 @@
+﻿@using WebApp.DTOs.Identity
+@using WebApp.Services.Identity
+@using WebApp.Services.Identity.Auth
+@using WebApp.Components.Pages.Auth
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Authorization
+
+
+@implements IDisposable
+
+@inject AuthService AuthService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@inject IToastService toastService
+@inject CustomAuthStateProvider AuthStateProvider
+
+@rendermode @(new InteractiveServerRenderMode(false))
+
+
+<h3>Odjava</h3>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="top-row px-4">
+            <button class="btn btn-outline-danger btn-sm" @onclick="LogoutAsync">Odjava</button>
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+
+@code {
+
+    /// <summary>
+    /// Subscribes to authentication state changes when the component is initialized.
+    /// </summary>
+    /// <remarks>
+    /// This ensures the UI updates when the authentication state changes.
+    /// </remarks>
+    protected override void OnInitialized()
+    {
+        AuthService.AuthStateChanged += StateHasChanged;
+    }
+
+    /// <summary>
+    /// Unsubscribes from the authentication state change event to avoid memory leaks.
+    /// </summary>
+    public void Dispose()
+    {
+        AuthService.AuthStateChanged -= StateHasChanged;
+    }
+
+    /// <summary>
+    /// Performs the logout operation by invoking the backend, clearing session, and notifying the user.
+    /// </summary>
+    /// <remarks>
+    /// On successful logout, user session is cleared, toast is shown, and redirection to login occurs.
+    /// </remarks>
+    /// <returns>Task representing the asynchronous logout operation.</returns>
+    private async Task LogoutAsync()
+    {
+        try
+        {
+            toastService.ShowInfo("Odjava u toku...");
+
+            var success = await AuthService.LogoutAsync();
+            if (success)
+            {
+                await AuthStateProvider.MarkUserAsLoggedOut();
+                toastService.ShowSuccess("Uspešno ste se odjavili.");
+
+                // Give the user time to see the toast
+                await Task.Delay(1500);
+
+                Navigation.NavigateTo("/login", forceLoad: true);
+            }
+            else
+            {
+                toastService.ShowError("Odjava nije uspela.");
+            }
+        }
+        catch (Exception ex)
+        {
+            toastService.ShowError($"Exception: {ex.Message}");
+        }
+    }
+}

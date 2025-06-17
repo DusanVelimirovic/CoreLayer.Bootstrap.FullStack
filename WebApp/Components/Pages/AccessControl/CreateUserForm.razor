@@ -1,0 +1,92 @@
+﻿@* A form for administrators to create new users and assign them a role.
+
+   Preconditions:
+   - AdminUserService and RoleService must be properly injected and operational.
+   - Roles must be loaded successfully on initialization.
+   - User input must pass data annotations validation.
+
+   Postconditions:
+   - A new user is submitted to the backend via AdminUserService.
+   - On success, form resets and a success toast appears.
+   - On failure, user sees a toast with the error message.
+*@
+
+@using WebApp.DTOs.Identity
+@using WebApp.Services.Identity.Admin
+@using Blazored.Toast.Services
+
+@inject AdminUserService AdminUserService
+@inject RoleService RoleService
+@inject IToastService ToastService
+@inject IJSRuntime JSRuntime
+
+@rendermode @(new InteractiveServerRenderMode(false))
+
+
+<!-- UI Card Container for Creating a User -->
+<div class="card mb-4">
+    <div class="card-header">
+        <strong>Kreiranje novog korisnika</strong>
+    </div>
+    <div class="card-body">
+        <!-- Blazor form with validation -->
+        <EditForm Model="@newUser" OnValidSubmit="HandleValidSubmit">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="mb-3">
+                <label class="form-label">Korisničko ime</label>
+                <InputText class="form-control" @bind-Value="newUser.UserName" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Email</label>
+                <InputText class="form-control" @bind-Value="newUser.Email" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Lozinka</label>
+                <InputText class="form-control" type="password" @bind-Value="newUser.Password" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Uloga</label>
+                <InputSelect class="form-select" @bind-Value="newUser.RoleId">
+                    <option value="">-- Selektuj poziciju --</option>
+                    @foreach (var role in roles)
+                    {
+                        <option value="@role.Id">@role.Name</option>
+                    }
+                </InputSelect>
+            </div>
+
+            <button class="btn btn-success" type="submit">Kreiraj korisnika</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private CreateUserDto newUser = new();
+    private List<RoleDto> roles = new();
+
+    // Load all available roles on component initialization
+    protected override async Task OnInitializedAsync()
+    {
+        roles = await RoleService.GetRolesAsync();
+    }
+
+    // Submit handler triggered when form is valid
+    private async Task HandleValidSubmit()
+    {
+        var (success, message) = await AdminUserService.CreateUserAsync(newUser);
+        if (success)
+        {
+            ToastService.ShowSuccess("Korisnik uspešno kreiran.");
+            newUser = new(); // Reset form
+        }
+        else
+        {
+            ToastService.ShowError(message ?? "Neuspeo pokušaj kreiranja korisnika.");
+        }
+    }
+}

@@ -1,0 +1,97 @@
+﻿@page "/verify-2fa"
+
+@using WebApp.DTOs.Identity
+@using WebApp.Services.Identity
+@using Microsoft.AspNetCore.Components.Forms
+@inject NavigationManager NavManager
+@inject IToastService ToastService
+@inject AuthService AuthService
+@inject IJSRuntime JSRuntime
+
+@rendermode @(new InteractiveServerRenderMode(false))
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h3 class="text-center mb-4">🔐 Dvostruka autentifikacija</h3>
+
+                    <EditForm Model="verificationDto" OnValidSubmit="VerifyTokenAsync">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+
+                        <div class="mb-3">
+                            <label for="token" class="form-label">Unesite kod od 6 cifara poslat na email:</label>
+                            <InputText class="form-control" id="token" @bind-Value="verificationDto.Token" />
+                        </div>
+
+                        <div class="form-check mb-3">
+                            <InputCheckbox class="form-check-input" id="trustDevice" @bind-Value="trustThisDevice" />
+                            <label class="form-check-label" for="trustDevice">Zapamti ovaj uređaj za sledeću prijavu</label>
+                        </div>
+
+                        <div class="d-grid">
+                            <button class="btn btn-primary" type="submit">Potvrdi</button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private TwoFactorVerificationDto verificationDto = new();
+    private bool firstRenderCompleted = false;
+
+    private bool trustThisDevice = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !firstRenderCompleted)
+        {
+            firstRenderCompleted = true;
+
+            var localStorageUserId = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "pending2fa_userId");
+
+            if (string.IsNullOrWhiteSpace(localStorageUserId))
+            {
+                ToastService.ShowError("2FA sesija istekla ili nije validna.");
+                NavManager.NavigateTo("/login");
+                return;
+            }
+
+            verificationDto.UserId = localStorageUserId;
+            StateHasChanged(); // update the form with the now-populated userId
+        }
+    }
+
+    private async Task VerifyTokenAsync()
+    {
+        var (success, message) = await AuthService.VerifyTwoFactorAsync(verificationDto);
+
+        if (success)
+        {
+            ToastService.ShowSuccess("2FA uspešno verifikovana!");
+
+            // Trust device if user checked the box
+            if (trustThisDevice)
+            {
+                var deviceId = await JSRuntime.InvokeAsync<string>("getDeviceIdentifier");
+                var trustResult = await AuthService.MarkDeviceAsTrustedAsync(verificationDto.UserId, deviceId);
+
+                if (trustResult)
+                    ToastService.ShowInfo("Ovaj uređaj je označen kao bezbedan.");
+            }
+
+            await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "pending2fa_userId");
+            await AuthService.LoginAfter2FAConfirmedAsync(verificationDto.UserId);
+            NavManager.NavigateTo("/");
+        }
+        else
+        {
+            ToastService.ShowError(message ?? "Token nije validan ili je istekao.");
+        }
+    }
+}

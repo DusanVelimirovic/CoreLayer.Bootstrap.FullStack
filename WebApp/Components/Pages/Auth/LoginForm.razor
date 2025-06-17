@@ -1,0 +1,139 @@
+﻿@page "/login"
+
+@using WebApp.DTOs.Identity
+@using WebApp.Services.Identity.Auth
+@using Microsoft.AspNetCore.Components.Forms 
+@using Blazored.Toast.Services
+
+@inject AuthService AuthService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@inject IToastService ToastService
+@inject CustomAuthStateProvider AuthStateProvider
+
+<!-- Render mode for server-side interactivity -->
+@rendermode @(new InteractiveServerRenderMode(false))
+
+<RouteGuard Reverse="true" />
+
+
+<div class="container mt-5 login-form-container">
+    <div class="row justify-content-center">
+        <div class="col-md-5">
+            <div class="text-center mb-3">
+                <img src="favicon.png" alt="Logo" class="img-fluid" style="max-height: 50px;" />
+                <h3 class="mt-3">🔐 Prijava</h3>
+            </div>
+            
+            <EditForm Model="loginModel" OnValidSubmit="HandleLogin">
+            <div class="auth-form-inner">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                @if (!string.IsNullOrEmpty(serverError))
+                {
+                    <div class="alert alert-danger">@serverError</div>
+                }
+
+                <div class="mb-3">
+                    <label>Korisničko ime ili email</label>
+                    <InputText class="form-control" @bind-Value="loginModel.UserNameOrEmail" />
+                    <ValidationMessage For="@(() => loginModel.UserNameOrEmail)" />
+                </div>
+
+                <div class="mb-3">
+                    <label>Lozinka</label>
+                    <InputText class="form-control" type="password" @bind-Value="loginModel.Password" />
+                    <ValidationMessage For="@(() => loginModel.Password)" />
+                </div>
+
+                    <a class="btn text-dark" href="/forgot-password">
+                        <i class="bi bi-box-arrow-in-right me-1"></i> Resetuj lozinku
+                    </a>
+
+                <button class="btn btn-primary w-100" type="submit" disabled="@isLoading">
+                    @if (isLoading)
+                    {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true">
+                        Prijavljivanje u toku...
+                        </span>
+                    }
+                    else
+                    {
+                        <span>
+                            Prijavljivanje
+                        </span>
+
+                    }
+                </button>
+            </div>
+            </EditForm>
+        </div>    
+    </div>
+</div>
+
+@code {
+    private LoginRequestDto loginModel = new();
+    private string? serverError;
+    private bool isLoading = false;
+
+    private async Task HandleLogin()
+    {
+        serverError = null;
+        isLoading = true;
+
+        try
+        {
+            ToastService.ShowInfo("Prijavljivanje u toku...");
+            loginModel.DeviceIdentifier = await JSRuntime.InvokeAsync<string>("getDeviceIdentifier");
+
+            var result = await AuthService.LoginAsync(loginModel);
+
+            if (result!.Success)
+            {
+                var session = new AuthUserSessionDto
+                    {
+                        UserId = result.UserId!,
+                        UserName = loginModel.UserNameOrEmail,
+                        RoleIds = result.RoleIds ?? new List<string>(),
+                        AccessibleModuleIds = result.ModuleIdsWithAccess ?? new List<int>()
+                    };
+
+                await AuthStateProvider.MarkUserAsAuthenticated(session);
+
+                ToastService.ShowSuccess("Prijavljivanje uspelo.");
+                await Task.Delay(1500); // Allow user to see the toast
+                Navigation.NavigateTo("/");
+            }
+            else if (result.RequiresTwoFactor)
+            {
+                if (!string.IsNullOrEmpty(result.UserId))
+                {
+                    ToastService.ShowInfo("2FA obavezno. Preusmeravanje...");
+                    await JSRuntime.InvokeVoidAsync("localStorage.setItem", "pending2fa_userId", result.UserId);
+                    await Task.Delay(1000);
+                    Navigation.NavigateTo("/verify-2fa");
+                }
+                else
+                {
+                    serverError = "Server greška: 2FA uključeno, ID korisnika nije primljen.";
+                    ToastService.ShowError(serverError);
+                }
+            }
+            else
+            {
+                serverError = result.Message ?? "Prijava nije uspela.";
+            }
+        }
+        catch (Exception ex)
+        {
+            serverError = "Neočekivana greška prilikom prijave.";
+            ToastService.ShowError(serverError);
+            Console.WriteLine(ex);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

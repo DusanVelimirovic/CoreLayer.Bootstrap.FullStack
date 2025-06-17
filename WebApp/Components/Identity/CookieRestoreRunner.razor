@@ -1,0 +1,70 @@
+﻿@* ✅ Component responsible for restoring the identity authentication cookie
+     from either ProtectedSessionStorage or localStorage, injecting it into 
+     both the browser and the backend HttpClient CookieContainer.
+
+   🔒 Preconditions:
+   - Component should render once after app startup (typically placed in App.razor or MainLayout).
+   - CookieContainer and IJSRuntime must be properly injected and available.
+   - ApiGateway:BaseUrl must be configured in appsettings.
+
+   📤 Postconditions:
+   - If a valid cookie is found, it's restored into:
+     - document.cookie via JS interop
+     - HttpClient’s shared CookieContainer for backend API calls
+*@
+
+@using System.Net
+
+@inject ProtectedSessionStorage SessionStorage
+@inject IJSRuntime JSRuntime
+@inject CookieContainer CookieContainer
+@inject IConfiguration Config
+
+@code {
+    private bool _restored;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_restored)
+        {
+            string? value = null;
+
+            // 1. Try from SessionStorage
+            var result = await SessionStorage.GetAsync<string>(".AspNetCore.Identity.Application");
+            if (result.Success && !string.IsNullOrWhiteSpace(result.Value))
+            {
+                value = result.Value;
+                Console.WriteLine("✅ Cookie restored from ProtectedSessionStorage.");
+            }
+            else
+            {
+                // 2. Fallback to JS localStorage
+                value = await JSRuntime.InvokeAsync<string>("localStorage.getItem", ".AspNetCore.Identity.Application");
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    Console.WriteLine("Cookie restored from localStorage (session fallback).");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                // JS-level: set cookie for browser (if needed)
+                await JSRuntime.InvokeVoidAsync("storeCookie", $".AspNetCore.Identity.Application={value}");
+                Console.WriteLine("✅ .AspNetCore.Identity.Application re-injected after frontend restart.");
+
+                // Server-level: add to CookieContainer
+                var gatewayUri = new Uri(Config["ApiGateway:BaseUrl"]!);
+                CookieContainer.Add(gatewayUri, new Cookie(".AspNetCore.Identity.Application", value)
+                {
+                    Path = "/",
+                    Secure = false,
+                    HttpOnly = false
+                });
+
+                Console.WriteLine($"✅ .AspNetCore.Identity.Application manually added to CookieContainer: {value}");
+            }
+
+            _restored = true;
+        }
+    }
+}
