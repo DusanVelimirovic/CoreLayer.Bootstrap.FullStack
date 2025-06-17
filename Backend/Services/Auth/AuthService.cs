@@ -8,6 +8,13 @@ using Backend.Services.Interfaces.Auth;
 
 namespace Backend.Services.Auth
 {
+    /// <summary>
+    /// Service responsible for user authentication, login auditing, 2FA handling,
+    /// trusted device registration, and password reset functionality.
+    /// </summary>
+    /// <remarks>
+    /// Implements IAuthService to encapsulate identity and security logic.
+    /// </remarks>
     public class AuthService : IAuthService
     {
         private readonly UserManager<ApplicationUser> _userManager;
@@ -36,6 +43,15 @@ namespace Backend.Services.Auth
         private const int MaxFailedAttempts = 10;
         private readonly TimeSpan FailedLoginWindow = TimeSpan.FromMinutes(10);
 
+        /// <summary>
+        /// Authenticates a user with credentials, checks for 2FA, trusted device,
+        /// and records login attempt audit.
+        /// </summary>
+        /// <param name="loginDto">The login credentials and device information.</param>
+        /// <returns>
+        /// A <see cref="LoginResponseDto"/> indicating success or failure, along with
+        /// user role/module info or 2FA requirement if applicable.
+        /// </returns>
 
         public async Task<LoginResponseDto> LoginAsync(LoginRequestDto loginDto)
         {
@@ -245,6 +261,19 @@ namespace Backend.Services.Auth
             };
         }
 
+        /// <summary>
+        /// Persists a login attempt to the audit log, capturing success, failure reasons,
+        /// device info, and 2FA outcomes.
+        /// </summary>
+        /// <param name="userId">User ID (or "unknown").</param>
+        /// <param name="ipAddress">IP address of the request.</param>
+        /// <param name="success">Whether the login was successful.</param>
+        /// <param name="userAgent">User-Agent header (browser/device info).</param>
+        /// <param name="failureReason">Optional failure explanation.</param>
+        /// <param name="is2FASuccess">Whether 2FA succeeded, failed, or was not used.</param>
+        /// <param name="deviceName">Optional device name used during login.</param>
+        /// <param name="isTrustedDevice">Whether login used a trusted device.</param>
+
         public async Task SaveLoginAttemptAsync(
             string userId,
             string? ipAddress,
@@ -272,6 +301,12 @@ namespace Backend.Services.Auth
             await _context.SaveChangesAsync();
         }
 
+        /// <summary>
+        /// Verifies a 2FA token for a given user and updates audit log accordingly.
+        /// </summary>
+        /// <param name="userId">ID of the user being verified.</param>
+        /// <param name="token">2FA token to verify.</param>
+        /// <returns>True if token is valid and verified; otherwise false.</returns>
 
         public async Task<bool> VerifyTwoFactorAsync(string userId, string token)
         {
@@ -356,7 +391,12 @@ namespace Backend.Services.Auth
             await LogEmailAuditAsync(user.Email!, "2FA", emailSuccess, emailSuccess ? null : "Failed to send 2FA email");
         }
 
-        // Mark device as trusted for 2FA
+        /// <summary>
+        /// Marks a device as trusted for a specific user, bypassing 2FA on future logins
+        /// from this device within expiration.
+        /// </summary>
+        /// <param name="dto">Trusted device data (user ID and device identifier).</param>
+        /// <returns>True if device was marked as trusted or already trusted; false otherwise.</returns>
         public async Task<bool> MarkDeviceAsTrustedAsync(TrustedDeviceRequestDto dto)
         {
             // Check if already exists
@@ -395,7 +435,12 @@ namespace Backend.Services.Auth
             return true;
         }
 
-        // Get Login Audit Data
+        /// <summary>
+        /// Retrieves a paginated list of login audit logs based on optional filters like user ID,
+        /// success state, or date range.
+        /// </summary>
+        /// <param name="query">Filtering and pagination parameters.</param>
+        /// <returns>List of <see cref="LoginAuditLogResultDto"/> entries.</returns>
         public async Task<List<LoginAuditLogResultDto>> GetLoginAuditLogsAsync(LoginAuditLogQueryDto query)
         {
             var logsQuery = _context.LoginAuditLogs
@@ -450,7 +495,11 @@ namespace Backend.Services.Auth
             return results;
         }
 
-        // Generate reset token
+        /// <summary>
+        /// Generates and sends a password reset token to the user's confirmed email address.
+        /// </summary>
+        /// <param name="email">The email of the user requesting a reset.</param>
+        /// <returns>True if the token was successfully generated and email sent; otherwise false.</returns>
         public async Task<bool> GeneratePasswordResetTokenAsync(string email)
         {
             var user = await _userManager.FindByEmailAsync(email);
@@ -487,7 +536,12 @@ namespace Backend.Services.Auth
             return true;
         }
 
-        // Validate reset token
+        /// <summary>
+        /// Validates whether a password reset token is valid, unexpired, and unused.
+        /// </summary>
+        /// <param name="userId">ID of the user requesting reset.</param>
+        /// <param name="token">The token to validate.</param>
+        /// <returns>True if the token is valid; otherwise false.</returns>
         public async Task<bool> ValidatePasswordResetTokenAsync(string userId, string token)
         {
             var resetToken = await _context.PasswordResetTokens
@@ -503,7 +557,11 @@ namespace Backend.Services.Auth
             return true;
         }
 
-        // Reset password logic
+        /// <summary>
+        /// Resets a user's password using a previously validated reset token.
+        /// </summary>
+        /// <param name="dto">The reset request containing email, token, and new password.</param>
+        /// <returns>True if the reset was successful; otherwise false.</returns>
         public async Task<bool> ResetPasswordAsync(ResetPasswordRequestDto dto)
         {
             var user = await _userManager.FindByEmailAsync(dto.Email);
@@ -537,7 +595,12 @@ namespace Backend.Services.Auth
             return true;
         }
 
-        // Reset password log logic
+        /// <summary>
+        /// Logs an event related to a password reset action into the login audit log.
+        /// </summary>
+        /// <param name="userId">ID of the user.</param>
+        /// <param name="message">Details of the reset event.</param>
+        /// <param name="success">Indicates whether the operation succeeded.</param>
         private async Task LogPasswordResetAuditAsync(string userId, string message, bool success)
         {
             var log = new LoginAuditLog
@@ -557,6 +620,13 @@ namespace Backend.Services.Auth
             await _context.SaveChangesAsync();
         }
 
+        /// <summary>
+        /// Logs the result of an email operation, such as sending 2FA or reset token emails.
+        /// </summary>
+        /// <param name="toEmail">Recipient email address.</param>
+        /// <param name="templateType">Type of email sent (e.g., 2FA, PasswordReset).</param>
+        /// <param name="success">True if email was sent successfully.</param>
+        /// <param name="errorMessage">Optional failure reason.</param>
         private async Task LogEmailAuditAsync(string toEmail, string templateType, bool success, string? errorMessage = null)
         {
             var log = new EmailAuditLog

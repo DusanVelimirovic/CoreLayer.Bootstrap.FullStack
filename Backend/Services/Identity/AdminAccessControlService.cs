@@ -6,15 +6,34 @@ using Backend.Services.Interfaces.Identity;
 
 namespace Backend.Services.Identity
 {
+    /// <summary>
+    /// Service responsible for managing module access control by roles.
+    /// </summary>
+    /// <remarks>
+    /// Handles retrieval and updates of access permissions between roles and modules.
+    /// </remarks>
     public class AdminAccessControlService : IAdminAccessControlService
     {
         private readonly CoreLayerDbContext _context;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AdminAccessControlService"/> class.
+        /// </summary>
+        /// <param name="context">The database context for access control data operations.</param>
         public AdminAccessControlService(CoreLayerDbContext context)
         {
             _context = context;
         }
 
+        /// <summary>
+        /// Retrieves a list of all role-to-module access control records.
+        /// </summary>
+        /// <returns>
+        /// A task representing the asynchronous operation. The task result contains a list of <see cref="AccessControlDto"/> items.
+        /// </returns>
+        /// <remarks>
+        /// Useful for administrative views of access rights per module and role.
+        /// </remarks>
         public async Task<List<AccessControlDto>> GetAccessControlsAsync()
         {
             var accessControls = await _context.ModuleAccessControls
@@ -28,6 +47,16 @@ namespace Backend.Services.Identity
             return accessControls;
         }
 
+        /// <summary>
+        /// Creates or updates access control for a specific role-module combination.
+        /// </summary>
+        /// <param name="dto">The data transfer object containing module ID, role ID, and access flag.</param>
+        /// <returns>
+        /// A task representing the asynchronous operation. The task result is <c>true</c> if the update or insert was successful.
+        /// </returns>
+        /// <remarks>
+        /// If a matching record exists, the <c>CanAccess</c> flag is updated. Otherwise, a new record is added.
+        /// </remarks>
         public async Task<bool> UpdateAccessControlAsync(AccessControlDto dto)
         {
             var existing = await _context.ModuleAccessControls

@@ -13,6 +13,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SendGrid.Extensions.DependencyInjection;
 
+/// <summary>
+/// Entry point for the CoreLayer backend application. Configures services, middleware, and application startup.
+/// </summary>
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add CoreLayer Shared Auth Module

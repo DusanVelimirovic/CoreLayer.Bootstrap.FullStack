@@ -7,18 +7,37 @@ using Backend.Services.Interfaces.Identity;
 
 namespace Backend.Services.Identity
 {
+    /// <summary>
+    /// Service responsible for user administration including retrieval, creation, updates, and role assignments.
+    /// </summary>
+    /// <remarks>
+    /// Used by administrators to manage users within the application.
+    /// </remarks>
     public class AdminUserService : IAdminUserService
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly CoreLayerDbContext _context;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AdminUserService"/> class.
+        /// </summary>
+        /// <param name="userManager">ASP.NET Identity user manager for managing application users.</param>
+        /// <param name="context">The application's database context.</param>
         public AdminUserService(UserManager<ApplicationUser> userManager, CoreLayerDbContext context)
         {
             _userManager = userManager;
             _context = context;
         }
 
-        // Gte Users
+        /// <summary>
+        /// Retrieves a paginated list of users, optionally filtered by a search term.
+        /// </summary>
+        /// <param name="page">Page number (1-based).</param>
+        /// <param name="pageSize">Number of users per page.</param>
+        /// <param name="search">Optional search string to match against email or username.</param>
+        /// <returns>
+        /// A paginated result containing a list of <see cref="UserListDto"/> items with user and role details.
+        /// </returns>
         public async Task<PaginatedResult<UserListDto>> GetUsersAsync(int page, int pageSize, string? search = null)
         {
             var query = _context.Users.AsQueryable();
@@ -64,7 +83,14 @@ namespace Backend.Services.Identity
             return result;
         }
 
-        // Update Users
+        /// <summary>
+        /// Updates user account data such as email, username, 2FA status, activity status, and assigned role.
+        /// </summary>
+        /// <param name="dto">DTO containing user ID and updated fields.</param>
+        /// <returns><c>true</c> if update succeeded; otherwise, <c>false</c>.</returns>
+        /// <remarks>
+        /// If a new role ID is provided, all existing roles will be removed and replaced with the specified role.
+        /// </remarks>
         public async Task<bool> UpdateUserAsync(UpdateUserDto dto)
         {
             var user = await _userManager.FindByIdAsync(dto.UserId);
@@ -97,7 +123,16 @@ namespace Backend.Services.Identity
             return result.Succeeded;
         }
 
-        // Create user
+        /// <summary>
+        /// Creates a new user account and assigns the specified role.
+        /// </summary>
+        /// <param name="dto">DTO containing the user's registration information.</param>
+        /// <returns>
+        /// A tuple where <c>Success</c> indicates whether creation succeeded, and <c>ErrorMessage</c> contains details if it failed.
+        /// </returns>
+        /// <remarks>
+        /// The user's email is automatically marked as confirmed and 2FA is disabled by default.
+        /// </remarks>
         public async Task<(bool Success, string? ErrorMessage)> CreateUserAsync(CreateUserDto dto)
         {
             var role = await _context.Roles.FindAsync(dto.RoleId);
@@ -131,7 +166,15 @@ namespace Backend.Services.Identity
             return (true, null);
         }
 
-        // Assign Role to user
+        /// <summary>
+        /// Assigns a single role to the user by first removing all currently assigned roles.
+        /// </summary>
+        /// <param name="userId">The ID of the user to modify.</param>
+        /// <param name="roleId">The ID of the new role to assign.</param>
+        /// <returns><c>true</c> if role assignment succeeded; otherwise, <c>false</c>.</returns>
+        /// <remarks>
+        /// Useful for admin UI where roles are selected from a dropdown and should replace any previous assignment.
+        /// </remarks>
         public async Task<bool> AssignRoleToUserAsync(string userId, string roleId)
         {
             var user = await _userManager.FindByIdAsync(userId);
